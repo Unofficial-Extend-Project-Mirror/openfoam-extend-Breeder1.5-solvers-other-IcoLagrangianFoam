@@ -45,8 +45,6 @@ namespace Foam {
 
   // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-  scalar HardBallParticle::density=1.;
-
 
   // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -67,11 +65,52 @@ namespace Foam {
     mass_(0.),
     U_(U)
   {
-    calculateDerived();
+      calculateDerived(cloud.constProps().density_);
   }
+    
+    HardBallParticle::constantProperties::constantProperties(const dictionary& dict)
+        :     
+        useSourceMoment_(readBool(dict.lookup("useMomentumSource"))),
+        density_(readScalar(dict.lookup("density"))),
+        g_(dict.lookup("g")),
+        subCycles_(readScalar(dict.lookup("subCycles"))),
+        thres_(readScalar(dict.subDict("injection").lookup("thres"))),
+        center_(dict.subDict("injection").lookup("center")),
+        r0_(readScalar(dict.subDict("injection").lookup("r0"))),
+        vel0_(readScalar(dict.subDict("injection").lookup("vel0"))),
+        vel1_(dict.subDict("injection").lookup("vel1")),
+        d0_(readScalar(dict.subDict("injection").lookup("d0"))),
+        d1_(readScalar(dict.subDict("injection").lookup("d1"))),
+        tStart_(readScalar(dict.subDict("injection").lookup("tStart"))),
+        tEnd_(readScalar(dict.subDict("injection").lookup("tEnd"))),
+        wallReflect_(readBool(dict.subDict("wall").lookup("reflect"))),
+        wallElasticity_(  
+            wallReflect_ ? 
+            readScalar(dict.subDict("wall").lookup("elasticity")) :
+            0.
+        ),
+        dragCoefficient_(readScalar(dict.lookup("drag")))
+    {
+    }
+    
+    HardBallParticle::trackData::trackData(
+        IncompressibleCloud &cloud,
+        interpolation<vector> &Uint
+    )
+        :
+        Particle<HardBallParticle>::trackData(cloud),
+    cloud_(cloud),
+    constProps_(cloud.constProps()),
+    wallCollisions_(0),
+    leavingModel_(0),
+    injectedInModel_(0),
+    changedProzessor_(0),
+    UInterpolator_(Uint)
+    {
+    }
 
-  void HardBallParticle::calculateDerived() {
-    mass_=density*4./3.*3.1415*d_*d_*d_/8.;
+  void HardBallParticle::calculateDerived(const scalar density) {
+      mass_=density*4./3.*3.1415*d_*d_*d_/8.;
   }
 
   HardBallParticle::HardBallParticle
@@ -98,7 +137,6 @@ namespace Foam {
               is.read(reinterpret_cast<char*>(&U_),sizeof(U_));
 	  }
 
-        calculateDerived(); // should not be necessary because the mass is alread read
       }
 
     is.check("HardBallParticle::HardBallParticle(IStream &");
@@ -116,134 +154,69 @@ namespace Foam {
 
   void HardBallParticle::updateProperties(
 					  const scalar dt,
-					  IncompressibleCloud &data,
+					  const trackData &data,
 					  const label cellI,
 					  const label faceI
 					  ) {
     vector Upos=data.UInterpolator().interpolate(position(),cellI,faceI);
 
-    scalar relax=1/(data.dragCoefficient()*(d_*d_)/mass_);
+    scalar relax=1/(data.constProps().dragCoefficient()*(d_*d_)/mass_);
     scalar coeff=dt/relax;
 #ifdef DEBUG_MOVE
     Info << "Gas velocity: " << Upos << "( " << relax << " , " << coeff << ")" << endl;
     vector Uold=U();
 #endif
 
-    U()=( U() + coeff*Upos + data.g()*dt)/(1. + coeff);
+    U()=( U() + coeff*Upos + data.constProps().g()*dt)/(1. + coeff);
 #ifdef DEBUG_MOVE
     Info << Uold << " - > " << U() << endl;
 #endif
   }
 
-  bool HardBallParticle::move(IncompressibleCloud &data) {
+    bool HardBallParticle::move(HardBallParticle::trackData &data) {
 #ifdef DEBUG_MOVE
     Info << "=======" << endl;
 #endif
-
-    bool keepParticle=true;
-    scalar deltaT=data.runTime().deltaT().value();
-    const polyMesh &mesh=cloud().pMesh();
-    const polyBoundaryMesh &pbMesh=mesh.boundaryMesh();
+    scalar deltaT=data.cloud().pMesh().time().deltaT().value();
 
  // set the end-time for the track
     scalar tEnd = (1.0 - stepFraction())*deltaT;
 
-    scalar dtMax=max(tEnd/data.subCycles(),tEnd*1.e-4);
+    scalar dtMax=max(tEnd/data.constProps().subCycles(),tEnd*1.e-4);
 
 #ifdef DEBUG_MOVE
     Info << "Before: " << position() << " \t " << U() << endl;
     Info << "Time: " << tEnd << "\t" << deltaT << "\t" << dtMax  << endl;
 #endif
 
-    bool switchProcessor = false;  //added
     vector planeNormal = vector::zero; //added
 
     label nIter=0;
 
-    while(keepParticle && (tEnd>SMALL) && (!switchProcessor)) {
+    data.switchProcessor = false;
+    data.keepParticle = true;
+
+    while(data.keepParticle && (tEnd>SMALL) && (!data.switchProcessor)) {
       scalar dt=min(dtMax,tEnd);
       label cellI=cell();
 
-      if(keepParticle){
-
       vector toPos=position()+U()*dt;
-
+      
       dt *= trackToFace(toPos,data);
       tEnd -= dt;
-
+      
       // Set the current time-step fraction.
       stepFraction() = 1.0 - tEnd/deltaT;
-      
-#ifdef DEBUG_MOVE
-      Info << "Tracked: (" << deltaT << ")\t" << position() << "\t" << stepFraction()  << endl;
-#endif
-
-      if(onBoundary()) {
-#ifdef DEBUG_MOVE
-	Info << "Particle hit boundary patch " << patch(face()) << endl;
-#endif
-	if (isType<wallPolyPatch>(pbMesh[patch(face())])) {
-#ifdef DEBUG_MOVE
-	  Info << "Particle hits wall ";
-#endif
-
-	  data.countWall();
-
-	  if(data.wallReflect()) {
-#ifdef DEBUG_MOVE
-	    Info << " is reflected from " << U();
-#endif
-	    vector Sf = mesh.faceAreas()[face()];
-	    Sf /= mag(Sf);
-	    scalar Un = U() & Sf;
-            
-	    if (Un > 0){
-	      U() -= (1.0 + data.wallElasticity())*Un*Sf;
-	    }
-#ifdef DEBUG_MOVE
-	    Info << "(" << Sf << " -> " << Un << ") to " << U() << endl;
-#endif
-	    keepParticle=true;	  
-	  } else {
-#ifdef DEBUG_MOVE
-	    Info << " and dies " << endl;
-#endif
-	    keepParticle=false;
-	  }
-	} else if(isType<polyPatch>(pbMesh[patch(face())])) {
-#ifdef DEBUG_MOVE
-	  Info << "Particle removed (in/outlet) " <<  endl;
-#endif
-
-	  data.countLeaving();
-
-	  keepParticle = false;
-	}
-      }
-    
+          
       nIter++;
-
-      }
     
       vector oMom=U()*m();
-
+      
       updateProperties(deltaT,data,cellI,face());
 
       vector nMom=U()*m();
 
-      data.smoment()[cellI] += oMom-nMom;
-
-      if(onBoundary() && keepParticle)
-        {
-          if(face() > -1)
-	    {
-                if(typeid(pbMesh[patch(face())]) == typeid(processorPolyPatch))
-	        {
-                    data.countChangedProzessor();
-                    switchProcessor = true;
-                }
-	    }
-        }
+      data.cloud().smoment()[cellI] += oMom-nMom;
     }
 
 #ifdef DEBUG_MOVE
@@ -252,7 +225,7 @@ namespace Foam {
     Info << "Keeping: " << keepParticle << endl;
     Info << "Switching: " << switchProcessor << endl;
 #endif
-    return keepParticle;
+    return data.keepParticle;
   }
 
   Ostream& operator<<(Ostream& os, const HardBallParticle& p)
@@ -278,6 +251,90 @@ namespace Foam {
     return os;
   }
 
+    void HardBallParticle::trackData::reportCounters(label particles) {
+        reduce(particles, sumOp<label>());
+        reduce(wallCollisions_, sumOp<label>());
+        reduce(leavingModel_, sumOp<label>());
+        reduce(injectedInModel_, sumOp<label>());
+        reduce(changedProzessor_, sumOp<label>());
+        
+        Info << particles << " Particles moved. " << wallCollisions_ << " walls hit. " << leavingModel_ << " particles left the model. " ;
+        if(injectedInModel_) {
+            Info << injectedInModel_ << " particles injected. ";
+        }
+        if(changedProzessor_) {
+            Info << changedProzessor_ << " particles changed the processor. ";
+        }
+        Info << endl;
+    }
+
+    void HardBallParticle::hitWallPatch
+    (
+        const wallPolyPatch&,
+        trackData& td
+    )
+    {
+        td.countWall();
+
+        if(td.constProps().wallReflect()) {
+	    vector Sf = cloud().pMesh().faceAreas()[face()];
+	    Sf /= mag(Sf);
+	    scalar Un = U() & Sf;
+            
+	    if (Un > 0){
+                U() -= (1.0 + td.constProps().wallElasticity())*Un*Sf;
+	    }
+	    td.keepParticle=true;	  
+	  } else {
+	    td.keepParticle=false;
+	  }
+    } 
+
+    void HardBallParticle::hitWallPatch
+    (
+        const wallPolyPatch&,
+        int& 
+    )
+    {
+    }
+
+    void HardBallParticle::hitPatch
+    (
+        const polyPatch&,
+        trackData& td
+    )
+    {
+        td.keepParticle=false;
+        td.countLeaving();
+    } 
+
+    void HardBallParticle::hitPatch
+    (
+        const polyPatch&,
+        int& 
+    )
+    {
+    }
+
+    void HardBallParticle::hitProcessorPatch
+    (
+        const processorPolyPatch&,
+        trackData& td
+    )
+    {
+        td.switchProcessor=false;
+        td.countChangedProzessor();
+    } 
+
+    void HardBallParticle::hitProcessorPatch
+    (
+        const processorPolyPatch&,
+        int& 
+    )
+    {
+    }
+
+    
   // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
 

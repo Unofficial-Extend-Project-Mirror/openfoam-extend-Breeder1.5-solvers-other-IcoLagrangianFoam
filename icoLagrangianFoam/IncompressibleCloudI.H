@@ -75,8 +75,8 @@ inline tmp<volVectorField> IncompressibleCloud::momentumSource() const
         )
     );
 
-    if(useSourceMoment) {
-      tsource().internalField() = smoment_/runTime_.deltaT().value()/mesh_.V()/HardBallParticle::density;
+    if(constProps().useSourceMoment_) {
+        tsource().internalField() = smoment_/runTime_.deltaT().value()/mesh_.V()/constProps().density_;
     }
 
     return tsource;

@@ -30,7 +30,6 @@
   \*----------------------------------------------------------------------------*/
 
 #include "IncompressibleCloud.H"
-#include "processorPolyPatch.H"
 
 namespace Foam
 {
@@ -52,13 +51,26 @@ namespace Foam {
 					   )
     :
     Cloud<HardBallParticle>(U.mesh()),
+    
+    constProps_(
+        IOdictionary(
+            IOobject
+            (
+                "cloudProperties",
+                U.time().constant(),
+                U.db(),
+                IOobject::MUST_READ,
+                IOobject::NO_WRITE
+            )
+        )
+    ),
     runTime_(U.time()),
     time0_(runTime_.value()),
     mesh_(U.mesh()),
     volPointInterpolation_(vpi),
+    random_(666),
     U_(U),
     smoment_(mesh_.nCells(), vector::zero),
-    random(666),
     cloudProperties_
     (
      IOobject
@@ -72,28 +84,6 @@ namespace Foam {
      ),
     interpolationSchemes_(cloudProperties_.subDict("interpolationSchemes"))
   {
-    g_=cloudProperties_.lookup("g");
-    HardBallParticle::density=readScalar(cloudProperties_.lookup("density"));
-    dragCoefficient_=readScalar(cloudProperties_.lookup("drag"));
-    subCycles_=readScalar(cloudProperties_.lookup("subCycles"));
-    useSourceMoment=readBool(cloudProperties_.lookup("useMomentumSource"));
-
-    dictionary injection(cloudProperties_.subDict("injection"));
-    thres=readScalar(injection.lookup("thres"));
-    center=injection.lookup("center");
-    r0=readScalar(injection.lookup("r0"));
-    vel0=readScalar(injection.lookup("vel0"));
-    vel1=injection.lookup("vel1");
-    d0=readScalar(injection.lookup("d0"));
-    d1=readScalar(injection.lookup("d1"));
-    tStart=readScalar(injection.lookup("tStart"));
-    tEnd=readScalar(injection.lookup("tEnd"));
-
-    dictionary wall(cloudProperties_.subDict("wall"));
-    wallReflect_=readBool(wall.lookup("reflect"));
-    if(wallReflect_) {
-      wallElasticity_=readScalar(wall.lookup("elasticity"));
-    }
   }
 
 
@@ -112,71 +102,57 @@ namespace Foam {
     smoment_.setSize(U_.size());
     smoment_ = vector::zero;
 
-    resetCounters();
+    autoPtr<interpolation<vector> > UInt = interpolation<vector>::New
+      (
+          interpolationSchemes_,
+          volPointInterpolation_,
+          U_
+      );
+    
+    HardBallParticle::trackData td(*this,UInt());
+
     label particles=size();
 
-    UInterpolator_ = interpolation<vector>::New
-      (
-       interpolationSchemes_,
-       volPointInterpolation_,
-       U_
-       );
+    this->move(td);
+    this->inject(td);  
 
-    this->move();
-    this->inject();  
-
-    UInterpolator_.clear();
-
-    reduce(particles, sumOp<label>());
-    reduce(wallCollisions_, sumOp<label>());
-    reduce(leavingModel_, sumOp<label>());
-    reduce(injectedInModel_, sumOp<label>());
-    reduce(changedProzessor_, sumOp<label>());
-
-    Info << particles << " Particles moved. " << wallCollisions_ << " walls hit. " << leavingModel_ << " particles left the model. " ;
-    if(injectedInModel_) {
-        Info << injectedInModel_ << " particles injected. ";
-    }
-    if(changedProzessor_) {
-        Info << changedProzessor_ << " particles changed the processor. ";
-    }
-    Info << endl;
+    td.reportCounters(particles);
   }
 
-  void IncompressibleCloud::move() {
+  void IncompressibleCloud::move(HardBallParticle::trackData &td) {
     smoment_ = vector::zero;
 
-    Cloud<HardBallParticle>::move(*this);
+    Cloud<HardBallParticle>::move(td);
   }
 
-  void IncompressibleCloud::inject() {
-    if(runTime_.time().value()<tStart || runTime_.time().value()>tEnd) {
-      return;
-    }
-
-    scalar prop=random.scalar01();
-
-    if(prop<thres) {
-      vector tmp=(random.vector01()-vector(0.5,0.5,0.5))*2;
-      vector pos=center+tmp*r0;
-
-      tmp=vector(random.GaussNormal(),random.GaussNormal(),random.GaussNormal())/sqrt(3.);
-      vector vel=tmp*vel0+vel1;
-
-      scalar d=fabs(random.GaussNormal())*d1+d0;
-
-      label cellI=mesh_.findCell(pos);
-
-      if(cellI>=0) {
-	HardBallParticle* ptr=new HardBallParticle(*this,pos,cellI,d,vel);
-        
-        ptr->stepFraction() = 1;
-
-	addParticle(ptr);
-        
-        injectedInModel_++;
+  void IncompressibleCloud::inject(HardBallParticle::trackData &td) {
+      if(runTime_.time().value()<td.constProps().tStart_ || runTime_.time().value()>td.constProps().tEnd_) {
+          return;
       }
-    }
+
+      scalar prop=random().scalar01();
+
+      if(prop<td.constProps().thres_) {
+          vector tmp=(random().vector01()-vector(0.5,0.5,0.5))*2;
+          vector pos=td.constProps().center_+tmp*td.constProps().r0_;
+          
+          tmp=vector(random().GaussNormal(),random().GaussNormal(),random().GaussNormal())/sqrt(3.);
+          vector vel=tmp*td.constProps().vel0_+td.constProps().vel1_;
+          
+          scalar d=fabs(random().GaussNormal())*td.constProps().d1_+td.constProps().d0_;
+          
+          label cellI=mesh_.findCell(pos);
+          
+          if(cellI>=0) {
+              HardBallParticle* ptr=new HardBallParticle(*this,pos,cellI,d,vel);
+              
+              ptr->stepFraction() = 1;
+              
+              addParticle(ptr);
+              
+              td.countInject();
+          }
+      }
   }
 
   // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
@@ -188,7 +164,5 @@ namespace Foam {
   // * * * * * * * * * * * * * * * Friend Operators  * * * * * * * * * * * * * //
 
 } // namespace Foam
-
-#include "IncompressibleCloudIO.C"
 
 // ************************************************************************* //

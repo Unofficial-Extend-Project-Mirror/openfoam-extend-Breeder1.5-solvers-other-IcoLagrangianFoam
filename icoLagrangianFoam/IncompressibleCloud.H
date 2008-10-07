@@ -38,12 +38,12 @@
 #define IncompressibleCloud_H
 
 #include "Cloud.H"
-#include "Random.H"
 
 
 #include "HardBallParticle.H"
 #include "volPointInterpolation.H"
 #include "interpolation.H"
+#include "Random.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -60,6 +60,7 @@ namespace Foam
     public Cloud<HardBallParticle>
   {
     // Private data
+    HardBallParticle::constantProperties constProps_;
 
     // References to the database and meshes
 
@@ -68,58 +69,18 @@ namespace Foam
     const fvMesh& mesh_;
     const volPointInterpolation& volPointInterpolation_;
 
+      Random random_;
 
     // References to the physical fields
 
     const volVectorField& U_;
 
     vectorField smoment_;
-    bool useSourceMoment;
-
-    //- Acceleration due to gravity
-    vector g_;
-
-    scalar subCycles_;
-
-    Random random;
-
-    // Injection stuff
-    scalar thres;
-    vector center;
-    scalar r0;
-    scalar vel0;
-    vector vel1;
-    scalar d0;
-    scalar d1;
-    scalar tStart;
-    scalar tEnd;
-
-    // ReflectionStuff
-    bool wallReflect_;
-    scalar wallElasticity_;
-
-    // counters for the statistics
-    label wallCollisions_;
-    label leavingModel_;
-    label injectedInModel_;
-    label changedProzessor_;
-    
-    void resetCounters() {
-      wallCollisions_=0;
-      leavingModel_=0;
-      injectedInModel_=0;
-      changedProzessor_=0;
-    }
-
-    // Other stuff
-    scalar dragCoefficient_;
 
     IOdictionary cloudProperties_;
 
     dictionary interpolationSchemes_;
 
-    autoPtr<interpolation<vector> > UInterpolator_;
-  
     // Private Member Functions
 
     //- Disallow default bitwise copy construct
@@ -153,24 +114,17 @@ namespace Foam
     void evolve();
 
     //- Move the spray parcels
-    void move();
+    void move(HardBallParticle::trackData &td);
 
     //- Inject more parcels
-    void inject();
+    void inject(HardBallParticle::trackData &td);
 
     // Access
-    const interpolation<vector>& UInterpolator() const {return UInterpolator_; }
     const Time &runTime() const {return runTime_; }
-    const vector &g() const { return g_; }
-    const scalar &dragCoefficient() const { return dragCoefficient_; }
-    const scalar &subCycles() const { return subCycles_; }
-    const scalar &wallElasticity() const { return wallElasticity_; }
-    const bool &wallReflect() const { return wallReflect_; }
     vectorField &smoment() { return smoment_; }
+    Random &random() { return random_; }
 
-    void countChangedProzessor() {changedProzessor_++;}
-    void countLeaving() { leavingModel_++; }
-    void countWall() { wallCollisions_++; }
+    const HardBallParticle::constantProperties &constProps() const { return constProps_; }
 
     inline tmp<volVectorField> momentumSource() const;
 

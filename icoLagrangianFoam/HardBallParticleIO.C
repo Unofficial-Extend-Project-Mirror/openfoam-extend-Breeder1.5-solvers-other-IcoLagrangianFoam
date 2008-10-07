@@ -29,7 +29,7 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    IncompressibleCloud
+    HardBallParticle
 
 Description
 
@@ -47,34 +47,57 @@ namespace Foam {
 
   // * * * * * * * * * * * * * * * IOstream Operators  * * * * * * * * * * * * //
 
-  Istream& operator>>(Istream& is, IncompressibleCloud&)
+  void HardBallParticle::writeFields(const IncompressibleCloud &c)
   {
-    // Check state of Istream
-    is.check
-      (
-       "Istream& operator>>(Istream&, IncompressibleCloud&)"
-       );
+    Particle<HardBallParticle>::writeFields(c);
 
-    return is;
+    label np = c.size();
+
+    IOField<scalar> d(c.fieldIOobject("d"),np);
+    IOField<scalar> m(c.fieldIOobject("m"),np);
+    IOField<vector> U(c.fieldIOobject("U"),np);
+
+    label i = 0;
+
+    forAllConstIter(IncompressibleCloud,c,iter)
+      {
+        const HardBallParticle& p = iter();
+
+        d[i] = p.d_;
+        m[i] = p.mass_;
+        U[i] = p.U_;
+
+        i++;
+      }
+
+    d.write();
+    m.write();
+    U.write();
   }
 
-
-  Ostream& operator<<(Ostream& os, const IncompressibleCloud&)
+  void HardBallParticle::readFields(IncompressibleCloud &c) 
   {
-    // Check state of Ostream
-    os.check
-      (
-       "Ostream& operator<<(Ostream&, "
-       "const IncompressibleCloud&)"
-       );
+    if(!c.size()) {
+        return;
+    }
 
-    return os;
+    IOField<scalar> d(c.fieldIOobject("d"));
+    IOField<scalar> m(c.fieldIOobject("m"));
+    IOField<vector> U(c.fieldIOobject("U"));
+
+    label i = 0;
+    forAllIter(IncompressibleCloud,c,iter)
+      {
+        HardBallParticle& p = iter();
+
+	p.d_ = d[i];
+	p.mass_ = m[i];
+	p.U_ = U[i];
+
+        p.calculateDerived(c.constProps().density_);  // should not be necessary because the mass is alread read
+      }
   }
 
-  void IncompressibleCloud::writeFields() const
-  {
-      HardBallParticle::writeFields(*this);
-  }
 } //namespace Foam
 
 // ************************************************************************* //
