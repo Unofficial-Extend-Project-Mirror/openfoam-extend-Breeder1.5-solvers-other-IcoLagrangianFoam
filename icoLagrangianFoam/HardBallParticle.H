@@ -37,7 +37,7 @@
 #ifndef HardBallParticle_H
 #define HardBallParticle_H
 
-#include "particle.H"
+#include "Particle.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -53,7 +53,7 @@ namespace Foam
 
   class HardBallParticle
     :
-    public particle<HardBallParticle>
+    public Particle<HardBallParticle>
   {
     // Private data
 
@@ -82,8 +82,12 @@ namespace Foam
 
   public:
 
-    friend class Cloud<HardBallParticle>;
+      friend class IncompressibleCloud;
+
     // Static data members
+
+    //- Run-time type information
+    TypeName("HardBallParticle");
 
     //- Static data someStaticData
     static  scalar density;
@@ -93,7 +97,7 @@ namespace Foam
 
     //- Construct from components
     HardBallParticle( 
-		     const Cloud<HardBallParticle>& cloud,
+		     const IncompressibleCloud& cloud,
 		     const vector& position,
 		     const label celli,
 		     const scalar& d,
@@ -108,26 +112,14 @@ namespace Foam
      bool readFields = true
      );
 
-    class iNew
-    {
-      const Cloud<HardBallParticle>& cloud_;
-
-    public:
-
-      iNew(const Cloud<HardBallParticle>& cloud)
-	:
-	cloud_(cloud)
-      {}
-
-      autoPtr<HardBallParticle> operator()(Istream& is) const
-      {
-	return autoPtr<HardBallParticle>(new HardBallParticle(cloud_, is));
-      }
-    };
-
     // Destructor
 
     ~HardBallParticle();
+
+     autoPtr<HardBallParticle> clone() const
+        {
+            return autoPtr<HardBallParticle>(new HardBallParticle(*this));
+        }
 
 
     // Member Functions
@@ -140,26 +132,18 @@ namespace Foam
     scalar& m()  {return mass_;};
     vector& U()  {return U_;};
 
-    // Check
+    static void readFields(IncompressibleCloud &c);
 
-    // Edit
-
-    // Write
-
-
-    // Member Operators
-
-    //        void operator=(const HardBallParticle&);
-
-
-    // Friend Functions
-
-    // Friend Operators
-
-    // IOstream Operators
+    static void writeFields(const IncompressibleCloud &c);
 
     friend Ostream& operator<<(Ostream&, const HardBallParticle&);
   };
+
+template<>
+inline bool contiguous<HardBallParticle>()
+{
+    return false;
+}
 
 
   // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //

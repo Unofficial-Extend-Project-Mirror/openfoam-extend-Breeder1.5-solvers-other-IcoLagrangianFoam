@@ -37,11 +37,15 @@
 
 namespace Foam {
 
+  defineTypeNameAndDebug(HardBallParticle, 0);
   defineParticleTypeNameAndDebug(HardBallParticle, 0);
+    //  defineParcelTypeNameAndDebug(HardBallParticle, 0);
+
+  defineTemplateTypeNameAndDebug(Cloud<HardBallParticle>, 0);
 
   // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-  scalar HardBallParticle::density=1.;;
+  scalar HardBallParticle::density=1.;
 
 
   // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
@@ -51,14 +55,14 @@ namespace Foam {
 
 
   // Construct from components
-  HardBallParticle::HardBallParticle(const Cloud<HardBallParticle>& cloud,
+  HardBallParticle::HardBallParticle(const IncompressibleCloud& cloud,
 				     const vector& position,
 				     const label celli,
 				     const scalar& d,
 				     const vector &U
 				     )
     :
-    particle<HardBallParticle>(cloud,position,celli),
+    Particle<HardBallParticle>(cloud,position,celli),
     d_(d),
     mass_(0.),
     U_(U)
@@ -77,15 +81,15 @@ namespace Foam {
    bool readFields
    )
     :
-      particle<HardBallParticle>(cloud, is)
+      Particle<HardBallParticle>(cloud, is)
   {
     if (readFields)
       {
         if (is.format() == IOstream::ASCII)
 	  {
-            d_ = readScalar(is);
-            mass_ = readScalar(is);
-            is >> U_;
+              is >> d_;
+              is >> mass_;
+              is >> U_;
 	  }
         else
 	  {
@@ -256,13 +260,13 @@ namespace Foam {
 
     if (os.format() == IOstream::ASCII)
       {
-	os << static_cast<const particle<HardBallParticle>&>(p)
+	os << static_cast<const Particle<HardBallParticle>&>(p)
 	   << token::SPACE << p.d_
            << token::SPACE << p.mass_
 	   << token::SPACE << p.U_;
 
       } else {
-	os << static_cast<const particle<HardBallParticle>&>(p);
+	os << static_cast<const Particle<HardBallParticle>&>(p);
         os.write(reinterpret_cast<const char*>(&p.d_),sizeof(p.d_));
         os.write(reinterpret_cast<const char*>(&p.mass_),sizeof(p.mass_));
         os.write(reinterpret_cast<const char*>(&p.U_),sizeof(p.U_));

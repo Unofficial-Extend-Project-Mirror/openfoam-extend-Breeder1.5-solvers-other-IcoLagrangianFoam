@@ -131,6 +131,7 @@ namespace Foam
 
   public:
 
+    TypeName("IncompressibleCloud");
 
     // Constructors
 
@@ -173,20 +174,7 @@ namespace Foam
 
     inline tmp<volVectorField> momentumSource() const;
 
-    // Check
-
-    // Edit
-
-    // Write
-
-    // Member Operators
-
-    // Friend Functions
-
-    // Friend Operators
-
-    // IOstream Operators
-
+      void writeFields() const;
   };
 
 

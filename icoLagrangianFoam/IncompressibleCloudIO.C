@@ -71,28 +71,27 @@ namespace Foam {
     return os;
   }
 
-  template<>
-  void Cloud<HardBallParticle>::writeFields() const
+  void HardBallParticle::writeFields(const IncompressibleCloud &c)
   {
-    label np = size();
+    Particle<HardBallParticle>::writeFields(c);
 
-    IOField<scalar> d(fieldIOobject("d"),np);
-    IOField<scalar> m(fieldIOobject("m"),np);
-    IOField<vector> U(fieldIOobject("U"),np);
+    label np = c.size();
+
+    IOField<scalar> d(c.fieldIOobject("d"),np);
+    IOField<scalar> m(c.fieldIOobject("m"),np);
+    IOField<vector> U(c.fieldIOobject("U"),np);
 
     label i = 0;
-    for
-      (
-       Cloud<HardBallParticle>::const_iterator iter = begin();
-       iter != end();
-       ++iter, ++i
-       )
+
+    forAllConstIter(IncompressibleCloud,c,iter)
       {
         const HardBallParticle& p = iter();
 
         d[i] = p.d_;
         m[i] = p.mass_;
         U[i] = p.U_;
+
+        i++;
       }
 
     d.write();
@@ -100,20 +99,18 @@ namespace Foam {
     U.write();
   }
 
-  template<>
-  void Cloud<HardBallParticle>::readFields() 
+  void HardBallParticle::readFields(IncompressibleCloud &c) 
   {
-    IOField<scalar> d(fieldIOobject("d"));
-    IOField<scalar> m(fieldIOobject("m"));
-    IOField<vector> U(fieldIOobject("U"));
+    if(!c.size()) {
+        return;
+    }
+
+    IOField<scalar> d(c.fieldIOobject("d"));
+    IOField<scalar> m(c.fieldIOobject("m"));
+    IOField<vector> U(c.fieldIOobject("U"));
 
     label i = 0;
-    for
-      (
-       Cloud<HardBallParticle>::iterator iter = begin();
-       iter != end();
-       ++iter, ++i
-       )
+    forAllIter(IncompressibleCloud,c,iter)
       {
         HardBallParticle& p = iter();
 
@@ -123,7 +120,11 @@ namespace Foam {
 
         p.calculateDerived();  // should not be necessary because the mass is alread read
       }
+  }
 
+  void IncompressibleCloud::writeFields() const
+  {
+      HardBallParticle::writeFields(*this);
   }
 } //namespace Foam
 

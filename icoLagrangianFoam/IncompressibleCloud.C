@@ -32,6 +32,11 @@
 #include "IncompressibleCloud.H"
 #include "processorPolyPatch.H"
 
+namespace Foam
+{
+    defineTypeNameAndDebug(IncompressibleCloud, 0);
+};
+
 namespace Foam {
 
   // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
@@ -105,6 +110,7 @@ namespace Foam {
   
   void IncompressibleCloud::evolve() {
     smoment_.setSize(U_.size());
+    smoment_ = vector::zero;
 
     resetCounters();
     label particles=size();
@@ -116,8 +122,8 @@ namespace Foam {
        U_
        );
 
-    move();
-    inject();  
+    this->move();
+    this->inject();  
 
     UInterpolator_.clear();
 
