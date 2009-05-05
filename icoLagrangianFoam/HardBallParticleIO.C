@@ -94,7 +94,8 @@ namespace Foam {
 	p.mass_ = m[i];
 	p.U_ = U[i];
 
-        p.calculateDerived(c.constProps().density_);  // should not be necessary because the mass is alread read
+//         p.calculateDerived(c.constProps().density_);  // should not be necessary because the mass is alread read
+	i++;
       }
   }
 

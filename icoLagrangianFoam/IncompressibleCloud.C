@@ -50,7 +50,7 @@ namespace Foam {
 					   const volVectorField& U
 					   )
     :
-    Cloud<HardBallParticle>(U.mesh()),
+    Cloud<HardBallParticle>(U.mesh(),false),
     
     constProps_(
         IOdictionary(
@@ -84,6 +84,7 @@ namespace Foam {
      ),
     interpolationSchemes_(cloudProperties_.subDict("interpolationSchemes"))
   {
+	HardBallParticle::readFields(*this);
   }
 
 
